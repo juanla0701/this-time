@@ -1,0 +1,15 @@
+{
+  "name": "암기 도우미",
+  "short_name": "암기 도우미",
+  "description": "어떤 과목이든 자료를 넣으면 요약하고 시험문제를 만들어주는 암기·시험 대비 앱",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

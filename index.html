@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>암기 도우미</title>
+  <meta name="description" content="사진이나 글로 넣은 자료를 암기 단위로 정리하고, 전체 내용을 다양한 형태로 시험하는 개인 암기 앱" />
+  <meta name="theme-color" content="#2563eb" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- 브라우저 한국어 OCR (WebAssembly, 브라우저 안에서 직접 실행) -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js"></script>
+</head>
+<body>
+  <div id="app"></div>
+
+  <!-- 의존성 순서대로 로드. 번들러 없이 <script> 태그로만 관리한다. -->
+  <script src="utils.js"></script>
+  <script src="storage.js"></script>
+  <script src="state.js"></script>
+  <script src="config.js"></script>
+  <script src="textAnalysis.js"></script>
+  <script src="ai.js"></script>
+  <script src="ocrCorrection.js"></script>
+  <script src="learning.js"></script>
+  <script src="subjects.js"></script>
+  <script src="units.js"></script>
+  <script src="imageStorage.js"></script>
+  <script src="materials.js"></script>
+  <script src="ocr.js"></script>
+  <!-- v4 사진 → 문서 파이프라인: 전처리 · 레이아웃 · 다중 OCR 합의 · 정리 · 구조 복원 -->
+  <script src="layoutAnalysis.js"></script>
+  <script src="imagePreprocess.js"></script>
+  <script src="ocrConsensus.js"></script>
+  <script src="docCleanup.js"></script>
+  <script src="docStructure.js"></script>
+  <script src="structureLearning.js"></script>
+  <script src="docPipeline.js"></script>
+  <script src="summary.js"></script>
+  <script src="quiz.js"></script>
+  <script src="questionQuality.js"></script>
+  <script src="quizGenerator.js"></script>
+  <script src="wordStudy.js"></script>
+  <script src="quizResult.js"></script>
+  <script src="wrongAnswers.js"></script>
+  <script src="ui.js"></script>
+  <script src="uiQuiz.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

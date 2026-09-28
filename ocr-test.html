@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OCR 테스트</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    body { background: var(--bg); color: var(--text); }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
+    h1 { font-size: 1.2rem; margin: 4px 0 12px; }
+    h2 { font-size: 1rem; margin: 18px 0 8px; }
+    .stage { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin: 10px 0; overflow-wrap: anywhere; }
+    .imgs { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+    .imgs figure { margin: 0; }
+    .imgs img { width: 100%; border: 1px solid var(--border); border-radius: 8px; }
+    figcaption { font-size: 0.8rem; color: var(--text-muted); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    td, th { border: 1px solid var(--border); padding: 4px 6px; vertical-align: top; text-align: left; }
+    pre { white-space: pre-wrap; font-size: 0.82rem; background: var(--bg); padding: 8px; border-radius: 8px; max-height: 420px; overflow: auto; }
+    .ok { color: var(--ok); } .bad { color: var(--danger); } .muted { color: var(--text-muted); }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .controls label { font-size: 0.9rem; }
+    .metric { display: inline-block; margin-right: 14px; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <h1>OCR 테스트 · 사진 한 장이 문서가 되기까지</h1>
+  <p class="hint">교재 사진을 넣으면 단계별 결과(전처리 → 영역 → 변형별 OCR → 합의 → 정리 → 구조 → 암기 포인트)를 보여줍니다.
+    정답 전사본(JSON, 선택)을 넣으면 글자 오류율·구조 정확도·워터마크 잔존을 계산합니다. 사진과 결과는 이 브라우저 밖으로 나가지 않습니다(AI 사용을 켠 경우만 AI 서버로 전송).</p>
+  <div class="stage controls">
+    <label>사진 <input type="file" id="files" accept="image/*" multiple /></label>
+    <label>정답 JSON (선택) <input type="file" id="gt" accept="application/json,.json" /></label>
+    <label><input type="checkbox" id="useAi" /> AI 사용 (설정된 서버)</label>
+    <button id="run" class="primary-btn small">분석 시작</button>
+    <button id="export" class="secondary-btn small" disabled>결과 JSON 내보내기</button>
+    <span id="status" class="muted"></span>
+  </div>
+  <div id="summary"></div>
+  <div id="out"></div>
+</div>
+
+<script src="utils.js"></script>
+<script src="config.js"></script>
+<script src="textAnalysis.js"></script>
+<script src="ai.js"></script>
+<script src="ocrCorrection.js"></script>
+<script src="ocr.js"></script>
+<script src="layoutAnalysis.js"></script>
+<script src="imagePreprocess.js"></script>
+<script src="ocrConsensus.js"></script>
+<script src="docCleanup.js"></script>
+<script src="docStructure.js"></script>
+<script src="structureLearning.js"></script>
+<script src="docPipeline.js"></script>
+<script src="ocrDebug.js"></script>
+<script>
+(function () {
+  const $ = (s) => document.querySelector(s);
+  const h = (s) => Utils.escapeHtml(s == null ? "" : String(s));
+  const url = (blob) => URL.createObjectURL(blob);
+  let lastExport = null;
+  $("#useAi").disabled = !Ai.isConfigured();
+  if (!Ai.isConfigured()) $("#useAi").parentElement.title = "앱 설정에서 AI 서버 주소를 넣으면 켤 수 있습니다";
+
+  async function canvasUrl(c) {
+    return url(await ImagePreprocess.canvasToBlob(c, "image/jpeg", 0.8));
+  }
+
+  async function renderImage(res, im, i, report) {
+    const div = document.createElement("div");
+    const pre = im.pre;
+    const imgs = [`<figure><img src="${url(im.file)}"><figcaption>1. 원본 (보존)</figcaption></figure>`];
+    if (im.debug) {
+      const d = im.debug;
+      const ov = ImagePreprocess.drawLayoutOverlay(d.gray, d.width, d.height, im.layoutRaw);
+      imgs.push(`<figure><img src="${await canvasUrl(ov)}"><figcaption>2. 전처리 + 레이아웃 (${pre.layoutFound ? "표 인식" : "표 없음"})</figcaption></figure>`);
+    }
+    const rep = report.pages[i];
+    const metric = rep.structure
+      ? `<div><span class="metric">구조 정확도 <b>${rep.structure.pct}%</b> (${rep.structure.exact}/${rep.structure.total})</span>
+         <span class="metric">글자 오류율 원본 ${(rep.cerRaw * 100).toFixed(1)}% → 결과 <b>${(rep.cerFinal * 100).toFixed(1)}%</b></span>
+         <span class="metric ${rep.watermarkLeft.length ? "bad" : "ok"}">워터마크 잔존: ${rep.watermarkLeft.length ? h(rep.watermarkLeft.join(", ")) : "없음"}</span></div>`
+      : "";
+    const regionRows = im.regions
+      .map(
+        (r) => `<tr><td><b>${h(r.kind)}${r.index ?? ""}</b><div class="muted">${Math.round(r.box.w)}×${Math.round(r.box.h)}</div></td>
+          <td>${Object.entries(r.variants).map(([v, x]) => `<div><b>${h(v)}</b> <span class="muted">신뢰도 ${x.confidence}</span><pre>${h(x.text)}</pre></div>`).join("")}</td>
+          <td><pre>${h(r.consensus.text)}</pre>${r.consensus.lines.map((l) => `<div class="muted">${l.agree}/${l.of} · ${h(l.method)}</div>`).join("")}
+          ${r.consensus.dropped.length ? `<div class="bad">버린 줄: ${r.consensus.dropped.map((d) => `“${h(d.text)}” (${h(d.why)})`).join(", ")}</div>` : ""}</td></tr>`
+      )
+      .join("");
+    const log = res.cleanup.log.filter((l) => l.page === i + 1);
+    const struct = res.structure.pages[i];
+    div.className = "stage";
+    div.innerHTML = `
+      <h2>사진 ${i + 1} · ${im.ms}ms</h2>
+      ${metric}
+      <div class="imgs">${imgs.join("")}</div>
+      <p class="muted">${pre ? `기울기 ${pre.deskewAngle.toFixed(2)}° · 원근 ${pre.perspective.applied ? "보정" : "생략(" + h(pre.perspective.reason) + ")"} · 단계별 ms ${h(JSON.stringify(pre.timings))}` : "전처리 실패: " + h(im.preError)}</p>
+      <details open><summary>3. 영역별 OCR (변형 A 평탄화 / B Otsu / C 진한 글자 / orig 원본) → 합의</summary>
+        <table><tr><th>영역</th><th>변형별 결과</th><th>합의 결과</th></tr>${regionRows}</table></details>
+      <details><summary>4. 정리 기록 (${log.length}건: 워터마크 · 쪽 번호 · 잡음 · 용어 통일)</summary>
+        <table>${log.map((l) => `<tr><td>${h(l.type)}</td><td>${h(l.region)}:${l.line}</td><td>${h(l.from)}</td><td>${h(l.to)}</td><td class="muted">${h(l.why)}</td></tr>`).join("")}</table></details>
+      <details><summary>5. 구조 JSON</summary><pre>${h(JSON.stringify(struct, null, 2))}</pre></details>
+      <details open><summary>6. 최종 글 (finalText)</summary><pre>${h(res.texts[i])}</pre></details>
+      ${rep.structure && rep.structure.misses.length ? `<details><summary class="bad">정답과 다른 칸 ${rep.structure.misses.length}개</summary><table>${rep.structure.misses.map((m) => `<tr><td>${h(m.field)}</td><td>${h(m.got)}</td><td>${h(m.want)}</td></tr>`).join("")}</table></details>` : ""}
+    `;
+    return div;
+  }
+
+  $("#run").addEventListener("click", async () => {
+    const files = Array.from($("#files").files || []);
+    if (!files.length) return ($("#status").textContent = "사진을 선택하세요.");
+    let gt = null;
+    if ($("#gt").files && $("#gt").files[0]) {
+      try {
+        gt = JSON.parse(await $("#gt").files[0].text());
+      } catch (e) {
+        $("#status").textContent = "정답 JSON을 읽지 못했습니다: " + e.message;
+        return;
+      }
+    }
+    $("#run").disabled = true;
+    $("#out").innerHTML = "";
+    $("#summary").innerHTML = "";
+    const res = await DocPipeline.run(files, {
+      keepDebug: true,
+      useAi: $("#useAi").checked,
+      onProgress: (stage, done, total) => ($("#status").textContent = `${stage} ${Math.min(done + 1, total)}/${total}`),
+    });
+    const report = OcrDebug.report(res, gt);
+    const points = StructureLearning.pointsFromDoc(res.structure);
+    for (let i = 0; i < res.images.length; i++) $("#out").appendChild(await renderImage(res, res.images[i], i, report));
+    const pts = document.createElement("div");
+    pts.className = "stage";
+    pts.innerHTML = `<h2>7. 암기 포인트 ${points.length}개 (중요도 · 빈칸)</h2><table>${points
+      .map((p) => `<tr><td>${p.importance}</td><td>${h(p.area)}${p.questionLinked ? " · 질문연결" : ""}</td><td>${h(p.blankText || p.text)}</td><td><b>${h(p.answer || "")}</b></td></tr>`)
+      .join("")}</table>`;
+    $("#out").appendChild(pts);
+    const s = report.summary;
+    $("#summary").innerHTML = `<div class="stage"><b>전체</b> · ${res.ms}ms · AI: ${h(res.ai.status)}${res.ai.method ? " (" + h(res.ai.method) + ")" : ""}
+      · 정리 ${h(JSON.stringify(res.cleanup.counts))} · 용어 통일 ${h(JSON.stringify(res.cleanup.termMap))}
+      · 워터마크 표본 ${h(res.cleanup.watermark.samples.join(" | "))}
+      ${s ? `<div><span class="metric">구조 정확도 <b>${s.structurePct}%</b></span><span class="metric">글자 오류율 ${s.cerRaw}% → <b>${s.cerFinal}%</b></span><span class="metric">워터마크 남은 쪽 ${s.watermarkLeftPages}</span></div>` : ""}</div>`;
+    lastExport = {
+      at: new Date().toISOString(),
+      report,
+      texts: res.texts,
+      rawTexts: res.rawTexts,
+      structure: res.structure,
+      cleanupLog: res.cleanup.log,
+      ai: res.ai,
+      points,
+      regions: res.images.map((im) => im.regions),
+    };
+    $("#export").disabled = false;
+    $("#run").disabled = false;
+    $("#status").textContent = "완료";
+  });
+
+  $("#export").addEventListener("click", () => {
+    if (!lastExport) return;
+    const blob = new Blob([JSON.stringify(lastExport, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = url(blob);
+    a.download = `ocr-test-${Date.now()}.json`;
+    a.click();
+  });
+})();
+</script>
+</body>
+</html>
